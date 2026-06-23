@@ -1,21 +1,72 @@
 import numpy as np
-from scipy.signal import chirp
 from scipy.io import wavfile
+from scipy.fft import fft, ifft
+import matplotlib.pyplot as plt
 
-#Generating Sine Sweep
+#Load the file
+sample_rate, sweep = wavfile.read("data/original_sweep.wav")
+_, recording = wavfile.read("data/simulated_recording.wav")
+
+#Change to frequency domain
+
+fft_length = len(recording)
+sweep_fft = fft(sweep, n = fft_length)
+recording_fft = fft(recording, n = fft_length)
 
 
-# #Defining Audio Parameters
-# sample_rate = 44100 #Hz
-# duration = 5 #seconds
+#Deconvolution
+epsilon = 1e-10
+ir_fft = recording_fft / (sweep_fft + epsilon)
+
+#Change back to time
+extracted_ir = np.real(ifft(ir_fft))
+
+wavfile.write("data/extracted_ir.wav", sample_rate, extracted_ir.astype(np.float32) )
 
 
-# #Generate the timeline
-# total_samples = sample_rate * duration
-# t = np.linspace(0, duration, total_samples, endpoint=False)
+#Plot frequencies
+plt.figure(figsize=(10, 4))
 
-# #Audio waveform
-# sweep = chirp(t, f0 = 40, f1= 200, t1 = duration, method="logarithmic")
+plt.plot(extracted_ir)
 
-# sweep_32bit = sweep.astype(np.float32)
-# wavfile.write("data/original_sweep.wav", sample_rate, sweep_32bit)
+plt.title("Extracted Impulse Response")
+plt.xlabel("Samples (44100 = 1 second)")
+plt.ylabel("Amplitude")
+plt.grid(True)
+
+plt.xlim(0, 44100)
+plt.show()
+
+
+#Plot sweep fft
+
+frequencies = np.fft.fftfreq(fft_length, 1/sample_rate)
+
+
+#Figure plots
+# sweep_magnitude = np.abs(sweep_fft)
+# sweep_db = 20 * np.log10(sweep_magnitude + 1e-10)
+
+# recording_magnitude = np.abs(ir_fft)
+# recording_db = 20 * np.log10(recording_magnitude + 1e-10)
+
+
+
+# plt.figure(figsize=(10,4))
+
+# plt.plot(frequencies[:fft_length//2], recording_db[:fft_length//2])
+
+# plt.title("Frequency Domain (Decibels)")
+# plt.xlabel("Frequency (Hertz)")
+# plt.ylabel("Magnitude (dB)")
+
+# # 2. Stretch the X-Axis Logarithmically
+# plt.xscale('log')
+
+# # Add a tighter grid so we can see the logarithmic spacing
+# plt.grid(True, which="both", ls="-", color='0.8')
+
+# # Limit our view from 20 Hz (lowest human hearing) to 20,000 Hz
+# plt.xlim(20, 20000) 
+
+# plt.show()
