@@ -16,7 +16,7 @@ recording_fft = fft(recording, n = fft_length)
 
 #Deconvolution
 epsilon = 1e-10
-ir_fft = recording_fft / (sweep_fft + epsilon)
+recording_fft = recording_fft / (sweep_fft + epsilon)
 
 #Change back to time
 extracted_ir = np.real(ifft(ir_fft))
@@ -44,29 +44,29 @@ frequencies = np.fft.fftfreq(fft_length, 1/sample_rate)
 
 
 #Figure plots
-# sweep_magnitude = np.abs(sweep_fft)
-# sweep_db = 20 * np.log10(sweep_magnitude + 1e-10)
+sweep_magnitude = np.abs(sweep_fft)
+sweep_db = 20 * np.log10(sweep_magnitude + 1e-10)
 
-# recording_magnitude = np.abs(ir_fft)
-# recording_db = 20 * np.log10(recording_magnitude + 1e-10)
+recording_magnitude = np.abs(recording_fft)
+recording_db = 20 * np.log10(recording_magnitude + 1e-10)
 
 
 
-# plt.figure(figsize=(10,4))
+plt.figure(figsize=(10,4))
 
-# plt.plot(frequencies[:fft_length//2], recording_db[:fft_length//2])
+plt.plot(frequencies[:fft_length//2], recording_db[:fft_length//2])
 
-# plt.title("Frequency Domain (Decibels)")
-# plt.xlabel("Frequency (Hertz)")
-# plt.ylabel("Magnitude (dB)")
+plt.title("Frequency Domain (Decibels)")
+plt.xlabel("Frequency (Hertz)")
+plt.ylabel("Magnitude (dB)")
 
-# # 2. Stretch the X-Axis Logarithmically
-# plt.xscale('log')
+# 2. Stretch the X-Axis Logarithmically
+plt.xscale('log')
 
-# # Add a tighter grid so we can see the logarithmic spacing
-# plt.grid(True, which="both", ls="-", color='0.8')
+# Add a tighter grid so we can see the logarithmic spacing
+plt.grid(True, which="both", ls="-", color='0.8')
 
-# # Limit our view from 20 Hz (lowest human hearing) to 20,000 Hz
-# plt.xlim(20, 20000) 
+# Limit our view from 20 Hz (lowest human hearing) to 20,000 Hz
+plt.xlim(20, 20000) 
 
-# plt.show()
+plt.show()
