@@ -15,11 +15,11 @@ recording_fft = fft(recording, n = fft_length)
 
 
 #Deconvolution
-epsilon = 1e-10
-recording_fft = recording_fft / (sweep_fft + epsilon)
+epsilon = 1e-3
+recording_fft = recording_fft * np.conj(sweep_fft) / (np.abs(sweep_fft)**2 + epsilon)
 
 #Change back to time
-extracted_ir = np.real(ifft(ir_fft))
+extracted_ir = np.real(ifft(recording_fft))
 
 wavfile.write("data/extracted_ir.wav", sample_rate, extracted_ir.astype(np.float32) )
 

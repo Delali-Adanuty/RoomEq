@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.signal import convolve
+from scipy.signal import convolve, firwin
 from scipy.io import wavfile
 
 #Simulating a physical room
@@ -11,12 +11,13 @@ sample_rate, sweep = wavfile.read("data/original_sweep.wav")
 #Create an array of zeros(total silence)
 fake_ir = np.zeros(sample_rate)
 
-#Add the direct sound (60% to leave headroom)
-fake_ir[0] = 0.6
+# Lowpass the room at 3kHz and kill highs
+lpf = firwin(255, 3000, fs=sample_rate)
+fake_ir[:len(lpf)] = lpf
 
 #Add a single distinct echo, half a second later at 30% volume.
 echo_index = int(sample_rate * 0.5)
-fake_ir[echo_index] = 0.3
+fake_ir[echo_index] += 0.3
 
 
 #Play the sweep through the room
