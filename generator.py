@@ -63,14 +63,14 @@ print(f"setLatencySamples({latency});   // paste into prepareToPlay")
 
 
 #  Plot the filter
-filter_fft = fft(correction_filter)
-frequencies = np.fft.fftfreq(len(correction_filter), 1/sample_rate)
+filter_fft = fft(final_filter)
+frequencies = np.fft.fftfreq(len(final_filter), 1/sample_rate)
 filter_db = 20 * np.log10(np.abs(filter_fft) + 1e-10)
 
 plt.figure(figsize=(10, 4))
-plt.plot(frequencies[:len(correction_filter)//2], filter_db[:len(correction_filter)//2], color='orange')
+plt.plot(frequencies[:len(final_filter)//2], filter_db[:len(final_filter)//2], color='orange')
 
-plt.title("The Cure: Inverse Filter Frequency Response")
+plt.title("Inverse Filter Frequency Response")
 plt.xlabel("Frequency (Hertz)")
 plt.ylabel("Magnitude (dB)")
 plt.xscale('log')
