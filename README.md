@@ -4,6 +4,8 @@
 
 A Python-based digital signal processing toolchain designed to extract physical room impulse responses, calculate stable inverse filters, and format the resulting data for strict real-time C++ (JUCE) convolution.
 
+Read more about the behind the scenes **[here](https://delali-adanuty.github.io/RoomEq/)**
+
 ---
 
 ## Core Architecture
@@ -51,3 +53,7 @@ To ensure the theoretical mathematics translate flawlessly into the physical con
 
 - `numpy` - Core mathematical operations and matrix manipulations.
 - `scipy` - FFT execution and WAV file standard I/O.
+
+---
+
+Explore the JUCE plugin **[here](https://github.com/Delali-Adanuty/RoomEqPlugin)**
