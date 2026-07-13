@@ -4,13 +4,13 @@ from scipy.fft import fft, ifft
 import matplotlib.pyplot as plt
 
 
-sample_rate, room_impulse_response = wavfile.read("data/extracted_ir.wav")
+sample_rate, room_impulse_response = wavfile.read("data/physical_ir.wav")
 
 H_transfer_function = fft(room_impulse_response)
 
 
 #Calculate the inverse filter with Kirkeby Regularization
-beta = 0.1
+beta = 0.005
 H_inv_transfer_function = np.conj(H_transfer_function) / (np.abs(H_transfer_function)**2 + beta)
 
 
@@ -34,8 +34,8 @@ if max_amp > 0:
 peak_idx = np.argmax(np.abs(causal_filter))
 
 
-pre_len = 1024
-post_len = 7168
+pre_len = 44
+post_len = 8148
 
 
 start_idx = peak_idx - pre_len
