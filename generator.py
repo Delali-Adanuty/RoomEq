@@ -4,7 +4,7 @@ from scipy.fft import fft, ifft
 import matplotlib.pyplot as plt
 
 
-sample_rate, room_impulse_response = wavfile.read("data/physical_ir.wav")
+sample_rate, room_impulse_response = wavfile.read("data/physical_ir_2.wav")
 
 H_transfer_function = fft(room_impulse_response)
 
