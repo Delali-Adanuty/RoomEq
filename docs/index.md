@@ -31,7 +31,7 @@ A logarithmic sine sweep is played through a speaker and captured via a measurem
 
 $$H_{room} = \text{IFFT}\left( \frac{\text{FFT}(Recording) \cdot \text{FFT}(Sweep)^*}{\lvert\text{FFT}(Sweep)\rvert^2 + \epsilon} \right)$$
 
-- **Regularization Epsilon (\epsilon = 1e-3):** Added to the magnitude of the sweep to prevent division-by-zero errors in regions where the speaker lacks physical energy (e.g., sub-bass). This stabilizes near-zero frequencies and prevents high-frequency noise blowout.
+- **Regularization Epsilon $$(\epsilon = 1e-3)$$:** Added to the magnitude of the sweep to prevent division-by-zero errors in regions where the speaker lacks physical energy (e.g., sub-bass). This stabilizes near-zero frequencies and prevents high-frequency noise blowout.
 
 ### Zero-Phase Time Alignment
 
@@ -133,7 +133,11 @@ Building a DSP pipeline that spans from theoretical Python math to real-time C++
 - **The Convolution Engine "Passthrough" Anomaly:** The JUCE convolver acted as a dry passthrough, ignoring the impulse response entirely. Isolated to a channel mismatch: the Python script was exporting a 1-channel mono array, violating the `Stereo::yes` contract of the C++ engine. Stacking the array vertically via `np.column_stack` resolved the bypass.
 - **The Normalization Bypass:** The safety guard intended to prevent floating-point clipping (`if max_amp > 1:`) silently failed because the raw Kirkeby output naturally falls well below an amplitude of 1.0. Corrected to trigger dynamically (`if max_amp > 0:`), ensuring consistent peak normalization regardless of input scale.
 - **Regularization Epsilon Blowout:** An epsilon of `1e-10` was initially used during deconvolution — mathematically too small, causing high-frequency energy to blow up in regions where the sweep lacked physical acoustic energy. Increasing $$\epsilon$$ to a standard `1e-3` threshold stabilized the frequency boundaries.
-- **Mathematical Reference Errors:** The initial deconvolution logic added the regularization epsilon to the complex frequency data instead of its magnitude, failing to stabilize the denominator. Corrected to divide by the squared magnitude plus epsilon (\lvert S \rvert^2 + \epsilon).
+- **Mathematical Reference Errors:** The initial deconvolution logic added the regularization epsilon to the complex frequency data instead of its magnitude, failing to stabilize the denominator. Corrected to divide by the squared magnitude plus epsilon
+
+$$\lvert S \rvert^2 + \epsilon$$
+.
+
 - **Synthetic Testing Limitations:** Initial verification of the C++ engine was bottlenecked by a fake impulse response that was too rudimentary — a dominant direct-sound spike with no coloration produced an inverse filter nearly identical to a dry signal, making the DSP processing perceptually inaudible. The test environment was upgraded to use heavily colored synthetic responses to definitively prove audio thread interception.
 - **The REW Learning Curve:** None of this pipeline could be validated by code review alone — it had to be verified against Room EQ Wizard's SPL, group delay, spectrogram, waterfall, RT60, distortion, and inverse filter plots, with no prior background reading them. Early on, that meant not being able to tell a genuine room mode from a measurement artifact, or a meaningful gain spike from acceptable inversion noise. This was resolved by working through each plot type in sequence against known-good reference behavior until the graphs stopped being abstract and started directly dictating design decisions — the REW diagnostic is what confirmed correct modal correction, and separately surfaced the broadband gain floor, the 200–400 Hz gain spike, and the chaotic high-frequency inversion noise that motivated the move to a frequency-dependent beta array in the first place.
 
