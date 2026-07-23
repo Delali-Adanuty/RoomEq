@@ -29,13 +29,13 @@ The pipeline begins by translating the physical room into pure mathematical data
 
 A logarithmic sine sweep is played through a speaker and captured via a measurement microphone. The script does not use the raw recording; instead, it extracts the pure impulse response (IR) of the room through frequency-domain deconvolution.
 
-$$H_{room} = \text{IFFT}\left( \frac{\text{FFT}(Recording) \cdot \text{FFT}(Sweep)^*}{|\text{FFT}(Sweep)|^2 + \epsilon} \right)$$
+$$H_{room} = \text{IFFT}\left( \frac{\text{FFT}(Recording) \cdot \text{FFT}(Sweep)^*}{\lvert\text{FFT}(Sweep)\rvert^2 + \epsilon} \right)$$
 
-- **Regularization Epsilon ($\epsilon = 1e-3$):** Added to the magnitude of the sweep to prevent division-by-zero errors in regions where the speaker lacks physical energy (e.g., sub-bass). This stabilizes near-zero frequencies and prevents high-frequency noise blowout.
+- **Regularization Epsilon (\epsilon = 1e-3):** Added to the magnitude of the sweep to prevent division-by-zero errors in regions where the speaker lacks physical energy (e.g., sub-bass). This stabilizes near-zero frequencies and prevents high-frequency noise blowout.
 
 ### Zero-Phase Time Alignment
 
-Before the Real FFT is taken, the exact peak of the physical impulse response is anchored to index 0, and the tail is circularly wrapped. This mathematically treats the direct sound as arriving at $t = 0$, preventing a time-of-flight phase explosion and preserving a sharp transient response instead of letting high frequencies wrap chaotically.
+Before the Real FFT is taken, the exact peak of the physical impulse response is anchored to index 0, and the tail is circularly wrapped. This mathematically treats the direct sound as arriving at t = 0, preventing a time-of-flight phase explosion and preserving a sharp transient response instead of letting high frequencies wrap chaotically.
 
 Baseline verification for this stage came from raw REW sweep captures (with all master-bus effects bypassed) — the SPL and phase plots exposed the room's actual physical behavior: high-Q sub-bass modes below roughly 80 Hz, and dense, chaotic comb filtering above it. That empirical boundary is what defines the Schroeder frequency used throughout the rest of the pipeline.
 
@@ -66,11 +66,11 @@ Applying this textbook theory to a physical room results in immediate, catastrop
 
 To bridge the gap between classroom theory and physical reality, this pipeline abandons the pure inverse and employs Kirkeby Regularization, calculating a least-squares optimized inverse filter:
 
-$$H_{inv} = \frac{H_{room}^*}{|H_{room}|^2 + \beta(f)}$$
+$$H_{inv} = \frac{H_{room}^*}{\lvert H_{room}\rvert^2 + \beta(f)}$$
 
 ### From a Flat Constant to a Dynamic Beta Array
 
-The first working version of this pipeline used a single flat $\beta = 0.1$ everywhere. That's a safe floor, but it's a blunt instrument: it protects the extremes but also mutes precision in the midrange, where the room is most correctable and the ear is most sensitive.
+The first working version of this pipeline used a single flat \beta = 0.1 everywhere. That's a safe floor, but it's a blunt instrument: it protects the extremes but also mutes precision in the midrange, where the room is most correctable and the ear is most sensitive.
 
 The current implementation replaces the flat constant with a frequency-dependent `beta_array`:
 
@@ -132,8 +132,8 @@ Building a DSP pipeline that spans from theoretical Python math to real-time C++
 - **The Hardware Optimization Constraint:** Expanding the time-domain window arbitrarily risked unpredictable CPU load spikes during real-time DAW playback, since convolution engines process SIMD instructions most efficiently at aligned buffer boundaries. Resolved by locking `pre_len = 1024` and `post_len = 7168` — an exact 8192-sample total block, hitting a power-of-two boundary for CPU cache alignment, at the cost of an acceptable ~23.2 ms of latency.
 - **The Convolution Engine "Passthrough" Anomaly:** The JUCE convolver acted as a dry passthrough, ignoring the impulse response entirely. Isolated to a channel mismatch: the Python script was exporting a 1-channel mono array, violating the `Stereo::yes` contract of the C++ engine. Stacking the array vertically via `np.column_stack` resolved the bypass.
 - **The Normalization Bypass:** The safety guard intended to prevent floating-point clipping (`if max_amp > 1:`) silently failed because the raw Kirkeby output naturally falls well below an amplitude of 1.0. Corrected to trigger dynamically (`if max_amp > 0:`), ensuring consistent peak normalization regardless of input scale.
-- **Regularization Epsilon Blowout:** An epsilon of `1e-10` was initially used during deconvolution — mathematically too small, causing high-frequency energy to blow up in regions where the sweep lacked physical acoustic energy. Increasing $\epsilon$ to a standard `1e-3` threshold stabilized the frequency boundaries.
-- **Mathematical Reference Errors:** The initial deconvolution logic added the regularization epsilon to the complex frequency data instead of its magnitude, failing to stabilize the denominator. Corrected to divide by the squared magnitude plus epsilon ($|S|^2 + \epsilon$).
+- **Regularization Epsilon Blowout:** An epsilon of `1e-10` was initially used during deconvolution — mathematically too small, causing high-frequency energy to blow up in regions where the sweep lacked physical acoustic energy. Increasing $$\epsilon$$ to a standard `1e-3` threshold stabilized the frequency boundaries.
+- **Mathematical Reference Errors:** The initial deconvolution logic added the regularization epsilon to the complex frequency data instead of its magnitude, failing to stabilize the denominator. Corrected to divide by the squared magnitude plus epsilon (\lvert S \rvert^2 + \epsilon).
 - **Synthetic Testing Limitations:** Initial verification of the C++ engine was bottlenecked by a fake impulse response that was too rudimentary — a dominant direct-sound spike with no coloration produced an inverse filter nearly identical to a dry signal, making the DSP processing perceptually inaudible. The test environment was upgraded to use heavily colored synthetic responses to definitively prove audio thread interception.
 - **The REW Learning Curve:** None of this pipeline could be validated by code review alone — it had to be verified against Room EQ Wizard's SPL, group delay, spectrogram, waterfall, RT60, distortion, and inverse filter plots, with no prior background reading them. Early on, that meant not being able to tell a genuine room mode from a measurement artifact, or a meaningful gain spike from acceptable inversion noise. This was resolved by working through each plot type in sequence against known-good reference behavior until the graphs stopped being abstract and started directly dictating design decisions — the REW diagnostic is what confirmed correct modal correction, and separately surfaced the broadband gain floor, the 200–400 Hz gain spike, and the chaotic high-frequency inversion noise that motivated the move to a frequency-dependent beta array in the first place.
 
@@ -153,7 +153,11 @@ While DSP windowing is standard academic theory, calculating a mathematically pe
 
 ### 3. The Illusion of the Perfect Inverse
 
-Coming from a traditional DSP academic background, the concept of system inversion was understood strictly through the lens of ideal transfer functions: $H_{inv} = 1/Y(s)$. Running that exact classroom theory into a physical audio engine and watching it violently fail — hitting acoustic nulls and blowing out the convolution engine with infinite gain — was a pivotal moment that forced a complete re-evaluation of the math. Kirkeby Regularization, and later the move from a flat scalar to a frequency-dependent beta array, was the fix.
+Coming from a traditional DSP academic background, the concept of system inversion was understood strictly through the lens of ideal transfer functions:
+
+$$H_{inv} = \frac{1}{ Y (s)}$$
+
+Running that exact classroom theory into a physical audio engine and watching it violently fail — hitting acoustic nulls and blowing out the convolution engine with infinite gain — was a pivotal moment that forced a complete re-evaluation of the math. Kirkeby Regularization, and later the move from a flat scalar to a frequency-dependent beta array, was the fix.
 
 ---
 
@@ -163,10 +167,10 @@ Coming from a traditional DSP academic background, the concept of system inversi
 
 **Comb Filtering** — The jagged, chaotic frequency response primarily found in the high end, caused by direct sound colliding with early reflections. Produces hundreds of microscopic, physically unfixable peaks and nulls.
 
-**RFFT (Real Fast Fourier Transform)** — The algorithm used to convert a real time-domain audio signal into the frequency domain. Because a real-world signal's spectrum is mathematically symmetric, RFFT discards redundant negative frequencies and computes only up to the Nyquist limit ($F_s/2$), halving compute and memory versus a standard FFT.
+**RFFT (Real Fast Fourier Transform)** — The algorithm used to convert a real time-domain audio signal into the frequency domain. Because a real-world signal's spectrum is mathematically symmetric, RFFT discards redundant negative frequencies and computes only up to the Nyquist limit (F_s/2), halving compute and memory versus a standard FFT.
 
 **Zero-Phase Alignment** — Anchoring the loudest transient of an impulse response to index 0 and circularly wrapping the pre-ringing tail to the array's end, eliminating time-of-flight delay and preventing phase explosion during the RFFT.
 
 **Fractional-Octave Smoothing** — Logarithmic averaging of frequency data (e.g., 1/3-octave bands) that blurs chaotic comb filtering in the highs, so the inversion corrects the broad acoustic trend rather than chasing microscopic, unstable nulls.
 
-**Kirkeby Regularization (with Beta Array)** — A mathematical failsafe injected into the inversion equation. A dynamic, frequency-dependent constant ($\beta$) in the denominator prevents division-by-zero and unbounded amplification of unfixable acoustic nulls, protecting both digital headroom and physical hardware.
+**Kirkeby Regularization (with Beta Array)** — A mathematical failsafe injected into the inversion equation. A dynamic, frequency-dependent constant (\beta) in the denominator prevents division-by-zero and unbounded amplification of unfixable acoustic nulls, protecting both digital headroom and physical hardware.
