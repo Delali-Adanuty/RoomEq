@@ -1,161 +1,151 @@
 import numpy as np
 from scipy.io import wavfile
-from scipy.fft import fft, ifft
+from scipy.fft import rfft, irfft, rfftfreq
 import matplotlib.pyplot as plt
 
 
-sample_rate, room_impulse_response = wavfile.read("data/physical_ir_2.wav")
+sample_rate, raw_audio = wavfile.read("data/physical_ir_2.wav")
+N = len(raw_audio)
 
-H_transfer_function = fft(room_impulse_response)
+# Find the exact moment the speaker's direct sound hits the microphone
+peak_idx = np.argmax(np.abs(raw_audio))
+
+# Anchor the exact peak to index 0 and wrap the tail circularly.
+# This prevents the time-of-flight phase explosion and preserves sharp transients.
+ir_aligned = np.zeros(N)
+ir_aligned[:N - peak_idx] = raw_audio[peak_idx:]
+ir_aligned[N - peak_idx:] = raw_audio[:peak_idx]
+
+# Calculate the raw complex frequency response using Real FFT
+H_raw = rfft(ir_aligned)
+frequencies = rfftfreq(N, 1 / sample_rate)
 
 
-#Calculate the inverse filter with Kirkeby Regularization
-# --- 0. FREQUENCY-DEPENDENT REGULARIZATION (Smooth Ramps) ---
-N = len(H_transfer_function)
-beta_array = np.full(N, 0.005)
-
-# --- Define Frequency Boundaries ---
-sub_bass_start_idx = int(np.round(40 * (N / sample_rate)))
-sub_bass_end_idx = int(np.round(80 * (N / sample_rate)))
-
-high_freq_start_idx = int(np.round(16000 * (N / sample_rate)))
-high_freq_end_idx = int(np.round(18000 * (N / sample_rate)))
+# FRACTIONAL-OCTAVE COMPLEX SMOOTHING
+H_smoothed = np.copy(H_raw)
+schroeder_hz = 80.0
 
 
+# Smooth only above the Schroeder frequency to kill high-frequency comb filtering
+# while leaving the massive bass modes completely raw and exposed for the inversion.
+for i, f in enumerate(frequencies):
+    if f <= schroeder_hz or f >= 20000.0:
+        continue
+
+    # Calculate 1/3 octave boundaries
+    lower_frequency = f * 2**(-1/6)
+    higher_frequency = f * 2**(1/6)
+
+    low_idx = int(np.round(lower_frequency * (N / sample_rate)))
+    high_idx = int(np.round(higher_frequency * (N / sample_rate)))
+
+    # Ensure indices stay within bounds
+    low_idx = max(0, min(low_idx, len(H_raw) - 1))
+    high_idx = max(0, min(high_idx, len(H_raw) - 1))
+
+    if high_idx > low_idx:
+        # Averaging complex numbers directly flattens both chaotic amplitude and phase wraps
+        H_smoothed[i] = np.mean(H_raw[low_idx:high_idx])
+
+
+# KIRKEBY REGULARIZATION
+N_half = len(frequencies)
+beta_array = np.full(N_half, 0.005)
+
+sub_bass_start_idx = min(int(np.round(40 * (N / sample_rate))), N_half - 1)
+sub_bass_end_idx = min(int(np.round(schroeder_hz * (N / sample_rate))), N_half - 1)
+high_freq_start_idx = min(int(np.round(16000 * (N / sample_rate))), N_half - 1)
+high_freq_end_idx = min(int(np.round(18000 * (N / sample_rate))), N_half - 1)
+
+# Apply dynamic penalties to protect the speakers from unfixable nulls
 beta_array[0:sub_bass_start_idx] = 0.1
+beta_array[sub_bass_start_idx:sub_bass_end_idx] = np.linspace(0.1, 0.005, sub_bass_end_idx - sub_bass_start_idx)
+beta_array[high_freq_start_idx:high_freq_end_idx] = np.linspace(0.005, 0.1, high_freq_end_idx - high_freq_start_idx)
+beta_array[high_freq_end_idx:N_half] = 0.1
 
-# Smooth ramp from 40 Hz down to 80 Hz
-sub_bass_ramp_length = sub_bass_end_idx - sub_bass_start_idx
-beta_array[sub_bass_start_idx:sub_bass_end_idx] = np.linspace(0.1, 0.005, sub_bass_ramp_length)
-
-
-# Smooth ramp from 16 kHz up to 18 kHz
-high_freq_ramp_length = high_freq_end_idx - high_freq_start_idx
-beta_array[high_freq_start_idx:high_freq_end_idx] = np.linspace(0.005, 0.1, high_freq_ramp_length)
-
-# Hard penalty from 18 kHz to Nyquist
-beta_array[high_freq_end_idx:N // 2] = 0.1
+# Calculate the true inverse
+H_inv_raw = np.conj(H_smoothed) / (np.abs(H_smoothed)**2 + beta_array)
 
 
-# Mirror Sub-Bass
-beta_array[N - sub_bass_start_idx:N] = 0.1
-beta_array[N - sub_bass_end_idx:N - sub_bass_start_idx] = np.linspace(0.005, 0.1, sub_bass_ramp_length)
+# BRICKWALL CLIPPING & PHASE RECOMBINATION
 
-# Mirror High-Frequency
-beta_array[N // 2:N - high_freq_end_idx] = 0.1
-beta_array[N - high_freq_end_idx:N - high_freq_start_idx] = np.linspace(0.1, 0.005, high_freq_ramp_length)
+# Anchor Midrange to 0 dB
+mid_start = int(np.round(500 * (N / sample_rate)))
+mid_end = int(np.round(2000 * (N / sample_rate)))
+midrange_avg_gain = np.mean(np.abs(H_inv_raw[mid_start:mid_end]))
 
+H_inv_anchored = H_inv_raw / midrange_avg_gain
 
-H_inv_transfer_function = np.conj(H_transfer_function) / (np.abs(H_transfer_function)**2 + beta_array)
+# Enforce the absolute brickwall ceiling (+12 dB limit) directly on anchored inversion
+max_boost_linear = 10 ** (12.0 / 20.0)
+inv_mag_clipped = np.clip(np.abs(H_inv_anchored), 0, max_boost_linear)
+inv_phase = np.angle(H_inv_anchored)
 
-gain_ceiling_value = 8 #dB
-gain_ceiling_value_linear = 10**(gain_ceiling_value/20)
-
-inv_magnitude = np.abs(H_inv_transfer_function)
-inv_phase = np.angle(H_inv_transfer_function)
-
-clipped_inv_magnitude = np.clip(inv_magnitude, 0, gain_ceiling_value_linear)
+H_inv_transfer_function = inv_mag_clipped * np.exp(1j * inv_phase)
 
 
 
-magnitude_smoothed = np.copy(clipped_inv_magnitude)
+pretrunc_db = 20 * np.log10(np.abs(H_inv_transfer_function) + 1e-10)
 
-N = len(clipped_inv_magnitude)
-
-#For a schoeder frequency 500
-starting_index = int(np.round(500 * (N/sample_rate)))
-
-for i in range(starting_index, N//2):
-    center_frequency = i * (sample_rate/N)
-    lower_frequency = center_frequency * 2**(-1/6)
-    higher_frequency = center_frequency * 2**(1/6)
-
-    lower_frequency_index = int(np.round(lower_frequency *  (N/sample_rate)))
-    higher_frequency_index = int(np.round(higher_frequency *  (N/sample_rate)))
+plt.figure(figsize=(10, 4))
+plt.plot(frequencies, pretrunc_db, color='seagreen')
+plt.title("Pre-Truncation Inverse Filter Response (before windowing)")
+plt.xlabel("Frequency (Hz)")
+plt.ylabel("Magnitude (dB)")
+plt.xscale('log')
+plt.xlim(20, 20000)
+plt.ylim(-30, 30)
+plt.grid(True, which="both", ls="-", color='0.8')
+plt.show()
 
 
-    current_window = clipped_inv_magnitude[lower_frequency_index:higher_frequency_index]
-    
-    if len(current_window) > 0:
-        smoothed_val = np.mean(current_window)
-        magnitude_smoothed[i] = smoothed_val
-        magnitude_smoothed[N-i] = smoothed_val
+# Convert back to time domain
+correction_filter = irfft(H_inv_transfer_function, n=N)
 
-
-H_inv_clipped = magnitude_smoothed * np.exp(1j * inv_phase)
-
-
-
-# Change to time domain
-correction_filter = np.real(ifft(H_inv_clipped))
-
-
-
-shift_amount = N//2
-
+# Re-center the mathematical spike
+shift_amount = N // 2
 causal_filter = np.roll(correction_filter, shift_amount)
 
-
-#Normalize filter
-max_amp = np.max(np.abs(causal_filter))
-
-if max_amp > 0:
-    causal_filter = causal_filter / max_amp
-
-#find the dirac spike
 peak_idx = np.argmax(np.abs(causal_filter))
 
-
-pre_len = 44
-post_len = 8148
-
+# Standard configuration for JUCE Convolution block
+pre_len = 1024
+post_len = 7168
 
 start_idx = peak_idx - pre_len
 end_idx = peak_idx + post_len
 
-
 if start_idx < 0 or end_idx > len(causal_filter):
-    raise ValueError("peak is too close ot end of audio file to truncate")
+    raise ValueError("Peak is too close to end of audio file to truncate")
 
 raw_slice = causal_filter[start_idx:end_idx]
 
+# Apply Flat-Top Windowing: Preserves bass energy, gently fades the final 512 samples
 left_window = np.hanning(2 * pre_len)[:pre_len]
-right_window = np.hanning(2 * post_len)[post_len:]
+
+fade_len = 512
+right_window = np.ones(post_len)
+right_window[-fade_len:] = np.hanning(2 * fade_len)[fade_len:]
 
 asymmetric_window = np.concatenate((left_window, right_window))
-
 final_filter = raw_slice * asymmetric_window
 
-
+# Export as 32-bit float stereo WAV
 stereo_filter = np.column_stack((final_filter, final_filter)).astype(np.float32)
 wavfile.write("data/correction_filter.wav", sample_rate, stereo_filter)
 
-latency = pre_len
-print(f"setLatencySamples({latency}); ")
 
 
-#  Plot the filter
-filter_fft = fft(final_filter)
-frequencies = np.fft.fftfreq(len(final_filter), 1/sample_rate)
+filter_fft = rfft(final_filter)
+freqs_plot = rfftfreq(len(final_filter), 1 / sample_rate)
 filter_db = 20 * np.log10(np.abs(filter_fft) + 1e-10)
 
 plt.figure(figsize=(10, 4))
-plt.plot(frequencies[:len(final_filter)//2], filter_db[:len(final_filter)//2], color='orange')
-
-plt.title("Inverse Filter Frequency Response")
-plt.xlabel("Frequency (Hertz)")
+plt.plot(freqs_plot, filter_db, color='orange')
+plt.title("Final Inverse Filter Frequency Response")
+plt.xlabel("Frequency (Hz)")
 plt.ylabel("Magnitude (dB)")
 plt.xscale('log')
 plt.xlim(20, 20000)
 plt.grid(True, which="both", ls="-", color='0.8')
-plt.show()
-
-transfer_function_db = 20 * np.log10(np.abs(H_transfer_function))
-plt.figure(figsize=(10,4))
-plt.plot(transfer_function_db)
-plt.xlabel("Freq(Hz)")
-plt.ylabel("Magnitude(dB)")
-plt.xscale('log')
-plt.title("Transfer function")
-plt.grid(True, which="both")
 plt.show()
