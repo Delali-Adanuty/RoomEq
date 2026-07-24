@@ -124,6 +124,40 @@ The script generates `correction_filter.wav`. This file is not intended to be re
 
 ---
 
+## Filter Characteristics
+
+These plots trace the inverse filter through its own generation pipeline, from raw mathematical inversion to the final windowed, truncated version that ships inside the plugin.
+
+![Transfer function](../images/transfer_function.png)
+_The raw transfer function of the room, prior to any correction — this is the mathematical starting point the Kirkeby inversion works against._
+
+![Pre-truncation inverse filter response](../images/pre_window_fr.png)
+_The inverse filter's frequency response before windowing and truncation are applied. Note the instability creeping in at the sub-20 kHz edge — exactly the kind of unbounded, unwindowed behavior that Phase 4's asymmetric Hanning window and the +12 dB brickwall ceiling exist to tame._
+
+![Final inverse filter frequency response](../images/filter_fr.png)
+_The final 8192-sample filter after windowing, truncation, and the brickwall ceiling — this is what actually gets baked into `correction_filter.wav` and injected into the JUCE binary._
+
+---
+
+## Empirical Verification (REW Measurements)
+
+Simulated diagnostics and Python-side plots confirm the filter is mathematically well-behaved, but they can't confirm it's doing anything to the room. The only way to verify that is a physical sweep captured before and after the plugin is inserted, measured with Room EQ Wizard.
+
+A critical methodological note first: a raw baseline-vs-corrected overlay is _not_ directly trustworthy. The two sweeps were captured minutes apart, and even a fraction of a millisecond of delay drift between captures (in this case ~0.2 ms) introduces a small broadband gain offset that has nothing to do with the filter. Before drawing any conclusion from a comparison, both traces were level-matched at a stable reference point (1 kHz, in the flat midrange where the room isn't doing anything unusual) so that only the _shape_ of the two curves — not an incidental gain difference — is being compared.
+
+![Sub-bass region, unsmoothed, level-matched](../images/20_to_200.png)
+_Baseline vs. corrected, 10–200 Hz, no smoothing, levels matched at 1 kHz. This is the view that actually proves modal correction: baseline drops to roughly 18 dB in the sharp, narrow null at 50 Hz, while the corrected trace only dips to roughly 33–35 dB at the same frequency — about 15 dB of null-fill at the exact frequency the original REW diagnostic flagged as a problem. Smoothed views (below) blur this entirely, so this unsmoothed comparison is the only reliable evidence for it._
+
+![Full spectrum, 1/3-octave smoothed](../images/one_third_smoothing.webp)
+_Baseline vs. corrected, full spectrum, 1/3-octave smoothed — roughly matched to the frequency resolution of human hearing. Useful for judging overall tonal balance rather than narrow modal features: the corrected trace tracks visibly below baseline through the 40–100 Hz hump and again through part of the 1–3 kHz range, consistent with an overall gentler, flatter response._
+
+![Full spectrum, 20 Hz – 20 kHz](../images/20_to_20k.png)
+_Baseline vs. corrected across the full audible range, level-matched. Above roughly 9 kHz, the corrected trace stays visibly lower and less jagged than the raw comb-filtered baseline, consistent with the 1/3-octave smoothing bypass boundary and the conservative high-frequency beta value taming the chaotic, physically unfixable comb nulls rather than trying to chase them._
+
+**Methodology summary:** smoothing setting and zoom window matter enormously for what a given plot can and can't prove. Unsmoothed + narrow zoom is required to see modal nulls; 1/3-octave smoothing is appropriate for tonal-balance claims but will hide the exact thing narrow-null claims depend on. Any correction claim in this document is backed by a plot using the smoothing/zoom setting appropriate to that specific claim, not a single generic overlay.
+
+---
+
 ## Engineering Challenges
 
 Building a DSP pipeline that spans from theoretical Python math to real-time C++ execution required navigating severe mathematical and architectural traps. The following critical issues were systematically isolated and resolved during development:
@@ -162,19 +196,3 @@ Coming from a traditional DSP academic background, the concept of system inversi
 $$H_{inv} = \frac{1}{ Y (s)}$$
 
 Running that exact classroom theory into a physical audio engine and watching it violently fail — hitting acoustic nulls and blowing out the convolution engine with infinite gain — was a pivotal moment that forced a complete re-evaluation of the math. Kirkeby Regularization, and later the move from a flat scalar to a frequency-dependent beta array, was the fix.
-
----
-
-## Technical Glossary
-
-**Schroeder Frequency** — The acoustic crossover point (≈80 Hz here) separating two distinct physical behaviors in a room. Below it, sound acts as distinct, resonant standing waves (room modes) that can be mathematically inverted; above it, sound behaves as dense, chaotic reverberation.
-
-**Comb Filtering** — The jagged, chaotic frequency response primarily found in the high end, caused by direct sound colliding with early reflections. Produces hundreds of microscopic, physically unfixable peaks and nulls.
-
-**RFFT (Real Fast Fourier Transform)** — The algorithm used to convert a real time-domain audio signal into the frequency domain. Because a real-world signal's spectrum is mathematically symmetric, RFFT discards redundant negative frequencies and computes only up to the Nyquist limit (F_s/2), halving compute and memory versus a standard FFT.
-
-**Zero-Phase Alignment** — Anchoring the loudest transient of an impulse response to index 0 and circularly wrapping the pre-ringing tail to the array's end, eliminating time-of-flight delay and preventing phase explosion during the RFFT.
-
-**Fractional-Octave Smoothing** — Logarithmic averaging of frequency data (e.g., 1/3-octave bands) that blurs chaotic comb filtering in the highs, so the inversion corrects the broad acoustic trend rather than chasing microscopic, unstable nulls.
-
-**Kirkeby Regularization (with Beta Array)** — A mathematical failsafe injected into the inversion equation. A dynamic, frequency-dependent constant (\beta) in the denominator prevents division-by-zero and unbounded amplification of unfixable acoustic nulls, protecting both digital headroom and physical hardware.
