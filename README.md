@@ -53,7 +53,7 @@ To ensure the theoretical mathematics translate flawlessly into the physical con
 
 The filter's effect was confirmed with physical REW measurements, not just simulated diagnostics — level-matched baseline vs. corrected sweeps show a ~15 dB reduction in the sharp modal null at 50 Hz.
 
-![Sub-bass correction, unsmoothed, level-matched](images/20_to_200.png)
+![Sub-bass correction, unsmoothed, level-matched](docs/images/20_to_200.png)
 
 Full measurement methodology and additional plots (treble comb-filtering, tonal balance, filter response) are in the [detailed docs](https://delali-adanuty.github.io/RoomEq/).
 

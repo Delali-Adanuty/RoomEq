@@ -128,13 +128,13 @@ The script generates `correction_filter.wav`. This file is not intended to be re
 
 These plots trace the inverse filter through its own generation pipeline, from raw mathematical inversion to the final windowed, truncated version that ships inside the plugin.
 
-![Transfer function](../images/transfer_function.png)
+![Transfer function](images/transfer_function.png)
 _The raw transfer function of the room, prior to any correction — this is the mathematical starting point the Kirkeby inversion works against._
 
-![Pre-truncation inverse filter response](../images/pre_window_fr.png)
+![Pre-truncation inverse filter response](images/pre_window_fr.png)
 _The inverse filter's frequency response before windowing and truncation are applied. Note the instability creeping in at the sub-20 kHz edge — exactly the kind of unbounded, unwindowed behavior that Phase 4's asymmetric Hanning window and the +12 dB brickwall ceiling exist to tame._
 
-![Final inverse filter frequency response](../images/filter_fr.png)
+![Final inverse filter frequency response](images/filter_fr.png)
 _The final 8192-sample filter after windowing, truncation, and the brickwall ceiling — this is what actually gets baked into `correction_filter.wav` and injected into the JUCE binary._
 
 ---
@@ -145,13 +145,13 @@ Simulated diagnostics and Python-side plots confirm the filter is mathematically
 
 A critical methodological note first: a raw baseline-vs-corrected overlay is _not_ directly trustworthy. The two sweeps were captured minutes apart, and even a fraction of a millisecond of delay drift between captures (in this case ~0.2 ms) introduces a small broadband gain offset that has nothing to do with the filter. Before drawing any conclusion from a comparison, both traces were level-matched at a stable reference point (1 kHz, in the flat midrange where the room isn't doing anything unusual) so that only the _shape_ of the two curves — not an incidental gain difference — is being compared.
 
-![Sub-bass region, unsmoothed, level-matched](../images/20_to_200.png)
+![Sub-bass region, unsmoothed, level-matched](images/20_to_200.png)
 _Baseline vs. corrected, 10–200 Hz, no smoothing, levels matched at 1 kHz. This is the view that actually proves modal correction: baseline drops to roughly 18 dB in the sharp, narrow null at 50 Hz, while the corrected trace only dips to roughly 33–35 dB at the same frequency — about 15 dB of null-fill at the exact frequency the original REW diagnostic flagged as a problem. Smoothed views (below) blur this entirely, so this unsmoothed comparison is the only reliable evidence for it._
 
-![Full spectrum, 1/3-octave smoothed](../images/one_third_smoothing.webp)
+![Full spectrum, 1/3-octave smoothed](images/one_third_smoothing.webp)
 _Baseline vs. corrected, full spectrum, 1/3-octave smoothed — roughly matched to the frequency resolution of human hearing. Useful for judging overall tonal balance rather than narrow modal features: the corrected trace tracks visibly below baseline through the 40–100 Hz hump and again through part of the 1–3 kHz range, consistent with an overall gentler, flatter response._
 
-![Full spectrum, 20 Hz – 20 kHz](../images/20_to_20k.png)
+![Full spectrum, 20 Hz – 20 kHz](images/20_to_20k.png)
 _Baseline vs. corrected across the full audible range, level-matched. Above roughly 9 kHz, the corrected trace stays visibly lower and less jagged than the raw comb-filtered baseline, consistent with the 1/3-octave smoothing bypass boundary and the conservative high-frequency beta value taming the chaotic, physically unfixable comb nulls rather than trying to chase them._
 
 **Methodology summary:** smoothing setting and zoom window matter enormously for what a given plot can and can't prove. Unsmoothed + narrow zoom is required to see modal nulls; 1/3-octave smoothing is appropriate for tonal-balance claims but will hide the exact thing narrow-null claims depend on. Any correction claim in this document is backed by a plot using the smoothing/zoom setting appropriate to that specific claim, not a single generic overlay.
