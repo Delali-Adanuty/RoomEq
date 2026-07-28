@@ -30,8 +30,6 @@ Generating the inverse filter requires calculating the exact counter-frequencies
 
 Crucially, this correction is entirely decoupled from tone. No target curve, such as a Harman-style bass shelf or treble tilt, is baked into the math. This plugin corrects physics only. Tonal shaping is deliberately left to downstream EQ, matching the standard mixing workflow's separation of concerns.
 
----
-
 ## Mathematical & Formatting Constraints
 
 To ensure that the theoretical mathematics translate flawlessly into the physical constraints of the JUCE `juce::dsp::Convolution` engine, the pipeline enforces several rigid formatting stages.
@@ -41,8 +39,6 @@ The filter is strictly truncated to 8192 samples (roughly 185 milliseconds), car
 Addressing the physical byproduct of phase correction—specifically, metallic pre-ringing—requires an asymmetric Hanning window. A 1024-sample left ramp acts as an aggressive gate that amputates pre-ringing before the transient, while a 7168-sample right ramp provides a gentle release that allows the reverberant tail to decay to zero without spectral leakage.
 
 Finally, the mono impulse response array is vertically stacked into a 2-channel matrix via `np.column_stack` to satisfy the C++ host's stereo contract, and a dynamic safety check guarantees the filter is consistently peak-normalized prior to export.
-
----
 
 ## Verification
 
