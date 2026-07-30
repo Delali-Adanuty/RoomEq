@@ -14,7 +14,7 @@ The pipeline is divided into three primary stages: physical acoustic capture, fr
 
 ### Impulse Response Extraction (Deconvolution)
 
-To translate a raw acoustic sweep recording into a pure room impulse response, the system divides the raw recording by a reference sine sweep in the frequency domain. To prevent mathematical blowups and high-frequency noise in areas with low sweep energy, the process utilizes an epsilon regularization value (`1e-3`) added to the squared magnitude of the sweep. Furthermore, the exact peak of the impulse response is anchored to index 0. By circularly wrapping the tail before the RFFT, the algorithm successfully prevents time-of-flight phase explosion, providing an isolated and pristine impulse response to work with.
+To prevent mathematical blowups and high-frequency noise in areas with low sweep energy, the process utilizes an epsilon regularization value (`1e-3`) added to the squared magnitude of the sweep. Furthermore, the exact peak of the impulse response is anchored to index 0. By circularly wrapping the tail before the RFFT, the algorithm successfully prevents time-of-flight phase explosion, providing an isolated and pristine impulse response to work with.
 
 ### Selective Fractional-Octave Smoothing
 
