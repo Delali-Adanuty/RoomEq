@@ -1,64 +1,63 @@
 # Room Correction DSP Pipeline
 
+This is a set of Python scripts that converts a measured room impulse response (IR) into an inverse FIR filter. A separate JUCE plugin ([RoomEqPlugin](https://github.com/Delali-Adanuty/RoomEqPlugin)) applies the filter in real time with `juce::dsp::Convolution`.
+
+## Purpose
+
+A loudspeaker in a room has peaks and dips in its frequency response. A graphic EQ changes only the magnitude at fixed bands. An inverse FIR filter can change the magnitude and the phase at each frequency bin.
+
+## Method
+
+1. **Peak alignment:** Moves the direct sound of the IR to sample 0.
+2. **Selective smoothing:** Applies 1/3-octave complex smoothing from 80 Hz to 20 kHz. Below 80 Hz, the room modes stay unsmoothed.
+3. **Kirkeby inversion:** Calculates `H* / (|H|² + β)` with a frequency-dependent β. β is 0.1 below 40 Hz and above 18 kHz, and 0.005 from 80 Hz to 16 kHz.
+4. **Level anchor and ceiling:** Sets the 500 Hz–2 kHz mean gain to 0 dB and limits boosts to +12 dB.
+5. **Truncation and window:** Keeps 8192 samples (1024 before the peak, 7168 after). A Hann half-window decreases pre-ringing. A 512-sample fade ends the filter.
+6. **Export:** Writes a 2-channel, 32-bit float WAV file. The plugin build puts this file into the binary.
+
+## Filter Properties
+
+| Property | Value |
+| :--- | :--- |
+| Length | 8192 taps (185.8 ms at 44.1 kHz) |
+| Latency | 1024 samples (23.2 ms at 44.1 kHz) |
+| Maximum boost | +12 dB relative to the 500 Hz–2 kHz level |
+| Target curve | None |
+
+## Current Results
+
+I measured the room with REW, with the filter bypassed and with the filter active.
+
+- **Sub-bass:** The filter cuts the sub-bass (approximately −28 dB at 50 Hz). It does not correct the room modes.
+- **Midrange:** From 200 Hz to 2 kHz, the corrected response is within approximately 4 dB of the baseline.
+- **Upper midrange:** The filter has a notch near 6 kHz. The measured response has a dip near 5 kHz.
+
+**Cause of the sub-bass cut:** β is an absolute value. Where |H| < √β, the Kirkeby gain decreases with |H|, so the filter makes dips deeper. The measured sub-bass level is far below √0.1. Thus, the filter cuts it.
+
+## Next Steps
+
+- Make β relative to the response: divide H by its midrange RMS level before the inversion.
+- Smooth the magnitude only, because the complex mean can make false dips.
+- Measure again at three to five level-matched microphone positions.
+
+## Limitations
+
+- The filter is correct for one microphone position.
+- A filter cannot fill a null from destructive interference.
+- A filter cannot extend the low-frequency limit of the speaker.
+- The filter adds 23.2 ms of latency at 44.1 kHz.
+
+## How to Run
+
+1. Install Python 3 with numpy, scipy, and matplotlib.
+2. Measure the room IR with REW. Export it to `data/physical_ir_2.wav`.
+3. Run `python generator.py`. Close each plot window to continue.
+4. Copy `data/correction_filter.wav` into the plugin project and build the plugin again.
+
+## Technical Documentation
+
+For the full method, the measurements, the gain analysis, and the next steps, read the **[technical documentation](https://delali-adanuty.github.io/RoomEq/)**.
+
+---
+
 **Author:** Van-Dyck Adanuty
-
-This project is a Python-based digital signal processing toolchain designed to extract physical room impulse responses, calculate stable inverse filters, and format the resulting data for strict real-time C++ (JUCE) convolution.
-
-Read more about the behind-the-scenes process **[here](https://delali-adanuty.github.io/RoomEq/)**.
-
----
-
-## Core Architecture
-
-The pipeline is divided into three primary stages: physical acoustic capture, frequency-domain analysis and smoothing, and Kirkeby inversion.
-
-### Impulse Response Extraction (Deconvolution)
-
-To prevent mathematical blowups and high-frequency noise in areas with low sweep energy, the process utilizes an epsilon regularization value (`1e-3`) added to the squared magnitude of the sweep. Furthermore, the exact peak of the impulse response is anchored to index 0. By circularly wrapping the tail before the RFFT, the algorithm successfully prevents time-of-flight phase explosion, providing an isolated and pristine impulse response to work with.
-
-### Selective Fractional-Octave Smoothing
-
-Once the impulse response is extracted, the frequency data undergoes selective fractional-octave smoothing.
-
-The system averages complex frequency data in 1/3-octave bands to flatten chaotic high-frequency comb filtering. However, this smoothing is strictly enforced only above the approximate 80 Hz Schroeder frequency. Below that boundary, and above 20 kHz, the raw spectrum is left completely untouched.
-
-This deliberate isolation allows the algorithm to make precise, surgical corrections to actual real-world room modes rather than accidentally smoothing them away into mathematical oblivion.
-
-### Inverse Filter Generation (Kirkeby Regularization)
-
-Generating the inverse filter requires calculating the exact counter-frequencies needed to neutralize the room's physical response. The pipeline achieves this by inverting the phase and frequency anomalies using Kirkeby Regularization. Instead of relying on a single, flat regularization constant, it applies a frequency-dependent dynamic beta array. The beta value is set to `0.1` at the sub-bass and ultra-treble extremes, and tightened to `0.005` through the midrange. Consequently, the filter acts aggressively conservative where the room is physically unfixable, yet highly precise where correction is viable. As a final failsafe independent of the upstream Kirkeby penalties, a hard `np.clip` brickwall ceiling limits any single band to a maximum of +12 dB of boost.
-
-Crucially, this correction is entirely decoupled from tone. No target curve, such as a Harman-style bass shelf or treble tilt, is baked into the math. This plugin corrects physics only. Tonal shaping is deliberately left to downstream EQ, matching the standard mixing workflow's separation of concerns.
-
-## Mathematical & Formatting Constraints
-
-To ensure that the theoretical mathematics translate flawlessly into the physical constraints of the JUCE `juce::dsp::Convolution` engine, the pipeline enforces several rigid formatting stages.
-
-The filter is strictly truncated to 8192 samples (roughly 185 milliseconds), carefully split into 1024 pre-transient and 7168 post-transient samples. This truncating step isolates the spatially stable direct sound and early reflections while discarding chaotic diffuse reverberation, ultimately landing on a power-of-two boundary to ensure optimal SIMD and cache-aligned convolution performance. To force causality, a circular time shift using `np.roll` shifts wrapped data from the edges of the FFT array back to the center, aligning the main Dirac spike on a linear timeline.
-
-Addressing the physical byproduct of phase correction—specifically, metallic pre-ringing—requires an asymmetric Hanning window. A 1024-sample left ramp acts as an aggressive gate that amputates pre-ringing before the transient, while a 7168-sample right ramp provides a gentle release that allows the reverberant tail to decay to zero without spectral leakage.
-
-Finally, the mono impulse response array is vertically stacked into a 2-channel matrix via `np.column_stack` to satisfy the C++ host's stereo contract, and a dynamic safety check guarantees the filter is consistently peak-normalized prior to export.
-
-## Verification
-
-The filter's effect was verified with physical REW measurements rather than simulated diagnostics. Level-matched baseline versus corrected sweeps demonstrate a dramatic ~15 dB reduction in the sharp modal null at 50 Hz.
-
-![Sub-bass correction, unsmoothed, level-matched](docs/images/20_to_200.png)
-
-Full measurement methodology and additional plots covering treble comb-filtering, tonal balance, and filter response are available in the [detailed docs](https://delali-adanuty.github.io/RoomEq/).
-
-## Pipeline Execution & Dependencies
-
-Executing this pipeline relies on a minimal footprint of core dependencies: `numpy` for core mathematical operations and matrix manipulations, and `scipy` for FFT execution and standard WAV file I/O.
-
-The execution process itself follows a strict, step-by-step sequence:
-
-1. **Capture:** Record a logarithmic sine sweep through the physical room (Speakers → Measurement Mic).
-2. **Deconvolve:** Run the extraction script to generate the raw room IR.
-3. **Invert & Format:** Run the Kirkeby inversion script. This will output the `correction_filter.wav` file.
-4. **Compile:** Update the CMake `juce_add_binary_data` target in your C++ repository to point to the new WAV file and execute a clean build to bake the filter into memory.
-
----
-
-Explore the JUCE plugin **[here](https://github.com/Delali-Adanuty/RoomEqPlugin)**
